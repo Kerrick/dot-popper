@@ -1,0 +1,19 @@
+{
+  "name": "dot-popper",
+  "version": "0.0.1",
+  "description": "A simple game to explore game development, TypeScript, and Pixi.js",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Kerrick/dot-popper"
+  },
+  "author": "Kerrick Long",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/Kerrick/dot-popper/issues"
+  },
+  "homepage": "https://github.com/Kerrick/dot-popper"
+}
