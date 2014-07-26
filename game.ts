@@ -24,7 +24,7 @@ class Utils {
 class Game {
     private score: number = 0;
     private timer: number = 10 * 1000; // ms
-    private loopTime: number; // ms
+    private lastUpdate: number = 0; // ms
     private dotSize: number = 50;
     private dots: Array<Dot> = [];
     private renderer: PIXI.IPixiRenderer;
@@ -96,50 +96,43 @@ class Game {
     //endregion Text
 
     //region Loops
-    private titleLoop(): void {
+    private titleLoop(deltaTime: number): void {
 
     }
-    private playLoop(): void {
-        this.advanceTimer();
+    private playLoop(deltaTime: number): void {
+        this.advanceTimer(deltaTime);
         this.updateText();
         this.dots.forEach(dot => dot.move());
     }
-    private gameOverLoop(): void {
+    private gameOverLoop(deltaTime: number): void {
         this.updateText();
     }
-    private mainLoop(): void {
+    private mainLoop(time = 0): void {
+        var deltaTime: number = time - this.lastUpdate;
+        this.lastUpdate = time;
         switch (this.mode) {
             case GameMode.Title:
-                this.titleLoop();
+                this.titleLoop(deltaTime);
                 break;
             case GameMode.Playing:
-                this.playLoop();
+                this.playLoop(deltaTime);
                 break;
             case GameMode.GameOver:
-                this.gameOverLoop();
+                this.gameOverLoop(deltaTime);
                 break;
         }
         this.renderer.render(this.stage);
-        requestAnimFrame(() => this.mainLoop());
+        requestAnimationFrame((time) => this.mainLoop(time));
     }
     //endregion
 
     //region Game Logic
-    private advanceTimer(): void {
-        var now: number = window.performance.now();
-        var passed: number = this.loopTime ? now - this.loopTime : 0;
-
-        this.loopTime = now;
-        this.timer -= passed;
-
+    private advanceTimer(deltaTime: number): void {
+        this.timer -= deltaTime;
         if (this.timer < 0) {
             this.timer = 0;
-            this.endGame();
+            this.mode = GameMode.GameOver;
         }
-    }
-    private endGame(): void {
-        alert('Game over! Your score was ' + this.score);
-        this.mode = GameMode.GameOver;
     }
     private createDot(): void {
         var dot = new Dot(this, this.dotSize, this.randomDotX(), this.randomDotY());
@@ -156,14 +149,19 @@ class Game {
         return Utils.randomRange(this.dotSize, this.canvas.height - this.dotSize);
     }
     dotPopped(dot: Dot): void {
-        this.score += 1;
-        this.timer += 1000;
-        this.createDot();
+        if (this.mode === GameMode.Playing) {
+            dot.pop();
+            this.score += 1;
+            this.timer += 1000;
+            this.createDot();
+        }
     }
     dotPenalty(dot: Dot): void {
-        this.score -= 2;
-        if (this.score < 0) { this.score = 0; } // Let's not be discouraging.
-        this.timer -= 2000;
+        if (this.mode === GameMode.Playing) {
+            this.score -= 2;
+            if (this.score < 0) { this.score = 0; } // Let's not be discouraging.
+            this.timer -= 2000;
+        }
     }
     //endregion
 }
@@ -178,7 +176,7 @@ class Dot {
     constructor(private game: Game, private size: number, x: number, y: number) {
         this.graphics.hitArea = new PIXI.Circle(0, 0, this.size);
         this.graphics.interactive = true;
-        this.graphics.mousedown = this.graphics.touchstart = this.pop.bind(this);
+        this.graphics.mousedown = this.graphics.touchstart = this.click.bind(this);
         this.graphics.position.x = x;
         this.graphics.position.y = y;
         this.render();
@@ -228,15 +226,18 @@ class Dot {
 
         return this;
     }
-    pop(): Dot {
+    click(): Dot {
         if (!this.popped) {
-            this._popped = true;
-            this.render();
             this.game.dotPopped(this);
+            this.render();
         }
         else {
             this.game.dotPenalty(this);
         }
+        return this;
+    }
+    pop(): Dot {
+        this._popped = true;
         return this;
     }
 }

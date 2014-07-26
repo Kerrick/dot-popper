@@ -48,6 +48,7 @@ var Game = (function () {
         this.canvasElementId = canvasElementId;
         this.score = 0;
         this.timer = 10 * 1000;
+        this.lastUpdate = 0;
         this.dotSize = 50;
         this.dots = [];
         this.stage = new PIXI.Stage(15528177 /* White */);
@@ -113,54 +114,48 @@ var Game = (function () {
 
     //endregion Text
     //region Loops
-    Game.prototype.titleLoop = function () {
+    Game.prototype.titleLoop = function (deltaTime) {
     };
-    Game.prototype.playLoop = function () {
-        this.advanceTimer();
+    Game.prototype.playLoop = function (deltaTime) {
+        this.advanceTimer(deltaTime);
         this.updateText();
         this.dots.forEach(function (dot) {
             return dot.move();
         });
     };
-    Game.prototype.gameOverLoop = function () {
+    Game.prototype.gameOverLoop = function (deltaTime) {
         this.updateText();
     };
-    Game.prototype.mainLoop = function () {
+    Game.prototype.mainLoop = function (time) {
         var _this = this;
+        if (typeof time === "undefined") { time = 0; }
+        var deltaTime = time - this.lastUpdate;
+        this.lastUpdate = time;
         switch (this.mode) {
             case 0 /* Title */:
-                this.titleLoop();
+                this.titleLoop(deltaTime);
                 break;
             case 1 /* Playing */:
-                this.playLoop();
+                this.playLoop(deltaTime);
                 break;
             case 2 /* GameOver */:
-                this.gameOverLoop();
+                this.gameOverLoop(deltaTime);
                 break;
         }
         this.renderer.render(this.stage);
-        requestAnimFrame(function () {
-            return _this.mainLoop();
+        requestAnimationFrame(function (time) {
+            return _this.mainLoop(time);
         });
     };
 
     //endregion
     //region Game Logic
-    Game.prototype.advanceTimer = function () {
-        var now = window.performance.now();
-        var passed = this.loopTime ? now - this.loopTime : 0;
-
-        this.loopTime = now;
-        this.timer -= passed;
-
+    Game.prototype.advanceTimer = function (deltaTime) {
+        this.timer -= deltaTime;
         if (this.timer < 0) {
             this.timer = 0;
-            this.endGame();
+            this.mode = 2 /* GameOver */;
         }
-    };
-    Game.prototype.endGame = function () {
-        alert('Game over! Your score was ' + this.score);
-        this.mode = 2 /* GameOver */;
     };
     Game.prototype.createDot = function () {
         var dot = new Dot(this, this.dotSize, this.randomDotX(), this.randomDotY());
@@ -177,16 +172,21 @@ var Game = (function () {
         return Utils.randomRange(this.dotSize, this.canvas.height - this.dotSize);
     };
     Game.prototype.dotPopped = function (dot) {
-        this.score += 1;
-        this.timer += 1000;
-        this.createDot();
+        if (this.mode === 1 /* Playing */) {
+            dot.pop();
+            this.score += 1;
+            this.timer += 1000;
+            this.createDot();
+        }
     };
     Game.prototype.dotPenalty = function (dot) {
-        this.score -= 2;
-        if (this.score < 0) {
-            this.score = 0;
+        if (this.mode === 1 /* Playing */) {
+            this.score -= 2;
+            if (this.score < 0) {
+                this.score = 0;
+            }
+            this.timer -= 2000;
         }
-        this.timer -= 2000;
     };
     return Game;
 })();
@@ -202,7 +202,7 @@ var Dot = (function () {
         this._graphics = new PIXI.Graphics();
         this.graphics.hitArea = new PIXI.Circle(0, 0, this.size);
         this.graphics.interactive = true;
-        this.graphics.mousedown = this.graphics.touchstart = this.pop.bind(this);
+        this.graphics.mousedown = this.graphics.touchstart = this.click.bind(this);
         this.graphics.position.x = x;
         this.graphics.position.y = y;
         this.render();
@@ -268,14 +268,17 @@ var Dot = (function () {
 
         return this;
     };
-    Dot.prototype.pop = function () {
+    Dot.prototype.click = function () {
         if (!this.popped) {
-            this._popped = true;
-            this.render();
             this.game.dotPopped(this);
+            this.render();
         } else {
             this.game.dotPenalty(this);
         }
+        return this;
+    };
+    Dot.prototype.pop = function () {
+        this._popped = true;
         return this;
     };
     return Dot;
