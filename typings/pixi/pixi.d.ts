@@ -195,6 +195,7 @@ declare module PIXI
 		addChildAt(child: DisplayObject, index: number): void;
 		getChildAt(index:number):DisplayObject;
 		removeChild(child: DisplayObject): void;
+		removeChildren(): Array<DisplayObject>;
 		swapChildren(child: DisplayObject, child2: DisplayObject): void;
 	}
 
@@ -214,8 +215,11 @@ declare module PIXI
 	export class EventTarget
 	{
 		addEventListener(type: string, listener: (event: IEvent) => void );
+		on(type: string, listener: (event: IEvent) => void );
 		removeEventListener(type: string, listener: (event: IEvent) => void );
+		off(type: string, listener: (event: IEvent) => void );
 		dispatchEvent(event: IEvent);
+		emit(event: IEvent);
 	}
 
 	export class Graphics extends DisplayObjectContainer

@@ -4,6 +4,12 @@ enum Color { White = 0xecf0f1, Black = 0x34495e, Green = 0x2ecc71, Red = 0xe74c3
 enum Shade { White = 0xbdc3c7, Black = 0x2c3e50, Green = 0x27ae60, Red = 0xc0392b }
 enum GameMode { Title, Playing, GameOver }
 enum GameType { Classic, Zen }
+enum Defaults {
+    Timer = 10 * 1000, // ms
+    Score = 0,
+    LastUpdate = 0, // ms
+    DotSize = 50 // px
+}
 
 class Utils {
     public static colorToString(color:Color): string;
@@ -21,37 +27,81 @@ class Utils {
     }
 }
 
-class Game {
-    private score: number = 0;
-    private timer: number = 10 * 1000; // ms
-    private lastUpdate: number = 0; // ms
-    private dotSize: number = 50;
+interface GameState {
+    game: Game;
+
+    loop(time: number): GameState;
+    popped(dot: Dot): Dot;
+    penalty(dot: Dot): Dot;
+}
+
+class TitleScreen implements GameState {
+    constructor(public game: Game) {
+        game.clearStage();
+    }
+    public loop(time: number): TitleScreen {
+        return this;
+    }
+    public popped(dot: Dot): Dot { return dot }
+    public penalty(dot: Dot): Dot { return dot }
+}
+
+class InGame implements GameState {
+    private score: number = Defaults.Score;
+    private timer: number = Defaults.Timer;
+    private lastUpdate: number = Defaults.LastUpdate;
+    private dotSize: number = Defaults.DotSize;
     private dots: Array<Dot> = [];
-    private renderer: PIXI.IPixiRenderer;
-    private stage: PIXI.Stage = new PIXI.Stage(Color.White);
     private scoreLabel: PIXI.Text = new PIXI.Text('', {});
     private timerLabel: PIXI.Text = new PIXI.Text('', {});
     private scoreText: PIXI.Text = new PIXI.Text('', {});
     private timerText: PIXI.Text = new PIXI.Text('', {});
 
-    public canvas: HTMLCanvasElement;
-    public mode: GameMode = GameMode.Playing;
-    public type: GameType = GameType.Classic;
+    type: GameType = GameType.Classic;
 
-    constructor(private canvasElementId: string) {
-        this.canvas = <HTMLCanvasElement>document.getElementById(this.canvasElementId);
-        this.canvas.width = window.innerWidth;
-        this.canvas.height = window.innerHeight;
+    constructor(public game: Game) {
+        game.clearStage();
 
-        this.renderer = PIXI.autoDetectRenderer(this.canvas.width, this.canvas.height, this.canvas, false, true);
+        this.dots = [];
+        this.score = Defaults.Score;
+        this.timer = Defaults.Timer;
+        this.lastUpdate = Defaults.LastUpdate;
 
-        this.setupText();
+        this.setupGameText();
         this.createDot();
-        this.mainLoop();
     }
 
-    //region Text
-    private setupText(): void {
+    public loop(time: number): InGame {
+        if (this.lastUpdate === Defaults.LastUpdate) {
+            this.lastUpdate = time;
+        }
+        var deltaTime: number = time - this.lastUpdate;
+        this.lastUpdate = time;
+
+        this.advanceTimer(deltaTime);
+        this.updateGameText();
+        this.dots.forEach(dot => dot.move());
+        return this;
+    }
+
+    //region Game Logic
+    private advanceTimer(deltaTime: number): void {
+        this.timer -= deltaTime;
+        if (this.timer < 0) {
+            this.timer = 0;
+            this.game.gameOver();
+        }
+    }
+
+    private createDot(): void {
+        var dot = new Dot(this.game, this.dotSize, this.randomDotX(), this.randomDotY());
+        this.dots.unshift(dot);
+        this.game.stage.addChildAt(dot.graphics, this.dots.indexOf(dot));
+    }
+    //endregion
+
+    //region UI Logic
+    private setupGameText(): void {
         var padding: number = 8;
         var size: number = 20;
 
@@ -62,7 +112,7 @@ class Game {
         });
         this.timerLabel.position.x = padding;
         this.timerLabel.position.y = padding;
-        this.stage.addChild(this.timerLabel);
+        this.game.stage.addChild(this.timerLabel);
 
         this.scoreLabel.setText('Score: ');
         this.scoreLabel.setStyle({
@@ -71,7 +121,7 @@ class Game {
         });
         this.scoreLabel.position.x = padding;
         this.scoreLabel.position.y = this.timerLabel.position.y + this.timerLabel.height + padding;
-        this.stage.addChild(this.scoreLabel);
+        this.game.stage.addChild(this.scoreLabel);
 
         this.timerText.setStyle({
             font: 'bold ' + size + 'px Helvetica',
@@ -79,7 +129,7 @@ class Game {
         });
         this.timerText.position.x = this.timerLabel.position.x + this.timerLabel.width;
         this.timerText.position.y = this.timerLabel.position.y;
-        this.stage.addChild(this.timerText);
+        this.game.stage.addChild(this.timerText);
 
         this.scoreText.setStyle({
             font: 'bold ' + size + 'px Helvetica',
@@ -87,81 +137,106 @@ class Game {
         });
         this.scoreText.position.x = this.scoreLabel.position.x + this.scoreLabel.width;
         this.scoreText.position.y = this.scoreLabel.position.y;
-        this.stage.addChild(this.scoreText);
+        this.game.stage.addChild(this.scoreText);
     }
-    private updateText(): void {
+
+    private updateGameText(): void {
         this.scoreText.setText(this.score.toString());
         this.timerText.setText(Utils.timeString(this.timer));
-    }
-    //endregion Text
-
-    //region Loops
-    private titleLoop(deltaTime: number): void {
-
-    }
-    private playLoop(deltaTime: number): void {
-        this.advanceTimer(deltaTime);
-        this.updateText();
-        this.dots.forEach(dot => dot.move());
-    }
-    private gameOverLoop(deltaTime: number): void {
-        this.updateText();
-    }
-    private mainLoop(time = 0): void {
-        var deltaTime: number = time - this.lastUpdate;
-        this.lastUpdate = time;
-        switch (this.mode) {
-            case GameMode.Title:
-                this.titleLoop(deltaTime);
-                break;
-            case GameMode.Playing:
-                this.playLoop(deltaTime);
-                break;
-            case GameMode.GameOver:
-                this.gameOverLoop(deltaTime);
-                break;
-        }
-        this.renderer.render(this.stage);
-        requestAnimationFrame((time) => this.mainLoop(time));
-    }
-    //endregion
-
-    //region Game Logic
-    private advanceTimer(deltaTime: number): void {
-        this.timer -= deltaTime;
-        if (this.timer < 0) {
-            this.timer = 0;
-            this.mode = GameMode.GameOver;
-        }
-    }
-    private createDot(): void {
-        var dot = new Dot(this, this.dotSize, this.randomDotX(), this.randomDotY());
-        this.dots.unshift(dot);
-        this.stage.addChildAt(dot.graphics, this.dots.indexOf(dot));
     }
     //endregion
 
     //region Dot-related
     private randomDotX(): number {
-        return Utils.randomRange(this.dotSize, this.canvas.width - this.dotSize);
+        return Utils.randomRange(this.dotSize, this.game.canvas.width - this.dotSize);
     }
     private randomDotY(): number {
-        return Utils.randomRange(this.dotSize, this.canvas.height - this.dotSize);
+        return Utils.randomRange(this.dotSize, this.game.canvas.height - this.dotSize);
     }
-    dotPopped(dot: Dot): void {
-        if (this.mode === GameMode.Playing) {
-            dot.pop();
-            this.score += 1;
-            this.timer += 1000;
-            this.createDot();
-        }
+    public popped(dot: Dot): Dot {
+        dot.pop();
+        this.score += 1;
+        this.timer += 1000;
+        this.createDot();
+
+        return dot;
     }
-    dotPenalty(dot: Dot): void {
-        if (this.mode === GameMode.Playing) {
-            this.score -= 2;
-            if (this.score < 0) { this.score = 0; } // Let's not be discouraging.
-            this.timer -= 2000;
+    public penalty(dot: Dot): Dot {
+        this.score -= 2;
+        if (this.score < 0) { this.score = 0; }
+        this.timer -= 2000;
+
+        return dot;
+    }
+    //endregion
+}
+
+class GameOver implements GameState {
+    constructor(public game: Game) { }
+
+    public loop(time: number): GameOver {
+        return this;
+    }
+    public popped(dot: Dot): Dot { return dot }
+    public penalty(dot: Dot): Dot { return dot }
+}
+
+class Game {
+    private renderer: PIXI.IPixiRenderer;
+    public stage: PIXI.Stage = new PIXI.Stage(Color.White);
+    public canvas: HTMLCanvasElement;
+    public mode:StatmeMode;
+
+    constructor(private canvasElementId: string) {
+        this.canvas = <HTMLCanvasElement>document.getElementById(this.canvasElementId);
+        this.canvas.width = window.innerWidth;
+        this.canvas.height = window.innerHeight;
+
+        this.renderer = PIXI.autoDetectRenderer(this.canvas.width, this.canvas.height, this.canvas, false, true);
+
+        this.titleScreen();
+        this.loop();
+    }
+
+    //region PIXI Management
+    clearStage(): PIXI.Stage {
+        if (this.stage.children.length > 0) {
+            this.stage.removeChildren();
         }
+        this.renderer.render(this.stage);
+        return this.stage;
+    }
+    //endregion
+
+    //region Game Mode Methods
+    public titleScreen(): TitleScreen {
+        this.mode = new TitleScreen(this);
+
+        // TODO: Make a real title screen
+        window.setTimeout(function() { this.play(); }.bind(this), 1000);
+
+        return this.mode;
+    }
+    public play(): InGame {
+        this.mode = new InGame(this);
+        return this.mode;
+    }
+    public gameOver(): GameOver {
+        this.mode = new GameOver(this);
+
+        // TODO: Make a real game over screen
+        window.setTimeout(function() { this.titleScreen(); }.bind(this), 3000);
+
+        return this.mode;
+    }
+    //endregion
+
+    //region Loops
+    private loop(time = 0): Game {
+        this.mode.loop(time);
+        this.renderer.render(this.stage);
+        requestAnimationFrame((time) => this.loop(time));
+        return this;
     }
     //endregion
 }
@@ -228,11 +303,11 @@ class Dot {
     }
     click(): Dot {
         if (!this.popped) {
-            this.game.dotPopped(this);
+            this.game.mode.popped(this);
             this.render();
         }
         else {
-            this.game.dotPenalty(this);
+            this.game.mode.penalty(this);
         }
         return this;
     }
